@@ -1,0 +1,4 @@
+#Tomcat publish data
+#Wed Oct 25 11:31:09 PDT 2017
+org.eclipse.jst.jee.server\:Titan_Project=C\:\\Program Files\\Apache Software Foundation\\Tomcat 8.0\\wtpwebapps\\Titan_Project
+org.eclipse.jst.jee.server\:Titan=C\:\\Program Files\\Apache Software Foundation\\Tomcat 8.0\\wtpwebapps\\Titan

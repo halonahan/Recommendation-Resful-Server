@@ -1,0 +1,8 @@
+INDEX VERSION 1.3+D:\LaiOffer_Projects\.metadata\.plugins\org.eclipse.wst.jsdt.core\indexes
+1019156637.index
+3046566758.index
+3133822755.index
+3211270031.index
+3290918552.index
+1066299634.index
+1391895398.index

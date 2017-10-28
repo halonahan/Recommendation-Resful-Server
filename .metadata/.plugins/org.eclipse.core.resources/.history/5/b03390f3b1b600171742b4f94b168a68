@@ -1,0 +1,25 @@
+(function() {
+	/**
+	 * Variables
+	 */
+	var user_id = '1111';
+	var lng = -122.08;
+	var lat = 37.38;
+})();
+
+function $(tag, options) {
+	if (!options) {
+		return document.getElementById(tag);
+	}
+
+	var element = document.createElement(tag);
+
+	for ( var option in options) {
+		if (options.hasOwnProperty(option)) {
+			element[option] = options[option];
+		}
+	}
+
+	return element;
+}
+

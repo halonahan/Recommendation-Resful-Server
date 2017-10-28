@@ -1,0 +1,91 @@
+package rpc;
+
+import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import db.DBConnection;
+import db.DBConnectionFactory;
+
+/**
+ * Servlet implementation class UserLogin
+ */
+@WebServlet("/login")
+public class UserLogin extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+	private static final char[] toHex = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
+
+	
+    /**
+     * @see HttpServlet#HttpServlet()
+     */
+    public UserLogin() {
+        super();
+        // TODO Auto-generated constructor stub
+    }
+
+	/**
+	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse response)
+	 */
+	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		// TODO Auto-generated method stub
+		response.getWriter().append("Served at: ").append(request.getContextPath());
+	}
+
+	/**
+	 * @see HttpServlet#doPost(HttpServletRequest request, HttpServletResponse response)
+	 */
+	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		JSONObject userObject = RpcHelper.readJsonObject(request);
+		try {
+		if (userObject == null) {
+			
+				RpcHelper.writeJsonObject(response, new JSONObject().put("result", "FAIL"));
+				return;
+		}
+		String userId = userObject.getString("user_id");
+		String password = userObject.getString("password");
+		MessageDigest mdigest = MessageDigest.getInstance("MD5");
+		byte[] mybytes = mdigest.digest(password.getBytes());
+		String result_pwd =toHexString(mybytes);
+		DBConnection conn = DBConnectionFactory.getDBConnection();
+		boolean t = conn.verifyLogin(userId, result_pwd);
+		if (t == true) {
+			RpcHelper.writeJsonObject(response, new JSONObject().put("result", "SUCCESS").put("username",));
+		} else {
+			RpcHelper.writeJsonObject(response, new JSONObject().put("result", "FAIL"));
+		}
+		
+		
+		} catch (JSONException e) {
+			
+			e.printStackTrace();
+		} catch (NoSuchAlgorithmException e) {
+			
+			e.printStackTrace();
+		}
+		
+	}
+	
+
+	public static String toHexString(byte b[]) {
+	    int pos = 0;
+	    char[] c = new char[b.length*2];
+	    for (int i = 0; i < b.length; i++) {
+	        c[pos++] = toHex[(b[i] >> 4) & 0x0F];
+	        c[pos++] = toHex[b[i] & 0x0f];
+	    }
+	    return new String(c);
+	}
+
+}

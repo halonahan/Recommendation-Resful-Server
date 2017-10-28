@@ -1,0 +1,274 @@
+(function() {
+
+	var user_id = '1111';
+	var lng = -122.08;
+	var lat = 37.38;
+	
+	
+	function $(tag, options) {
+		if (!options) {
+			return document.getElementById(tag);
+		}
+		var element = document.createElement(tag);
+		for (var option in options) {
+			if (options.hasOwnProperty(option)) {
+				element[option] = options[option];
+			}
+		}
+		return element;
+	}
+	function showLoadingMessage(msg) {
+		var itemList = $('item-list');
+		itemList.innerHTML = '<p class="notice"><i class="fa fa-spinner fa-spin"></i>' + msg + '</p>';
+		
+	}
+	
+	function showWarningMessage(msg) {
+	    var itemList = $('item-list');
+	    itemList.innerHTML = '<p class="notice"><i class="fa fa-exclamation-triangle"></i> ' + msg + '</p>';
+	}
+	
+	function showErrorMessage(msg) {
+		var itemList = $('item-list');
+		itemList.innerHTML = '<p class="notice"><i class="fa fa-exclamation-circle"></i> ' + msg + '</p>';
+	}
+
+	function activeBtn(btnId) {
+		var btns = document.getElementsByClassName('main-nav-btn');
+		for (var i = 0; i < btns.length; i++) {
+			btns[i].className = btns[i].className.replace(/\bactive\b/, '');
+		}
+		var btn = $(btnId);
+		btn.className += ' active';
+	}
+	
+	function  listItems(items) {
+		var itemList = $('item-list');
+		itemList.innerHTML = '';
+		for (var i = 0; i < items.length; i++) {
+			addItem(itemList, items[i]);
+		}
+	}
+	function addItem(itemList, item) {
+		var item_id = item.item_id;
+		var li = $('li',{id: 'item-' + item_id, className: 'item'});
+		li.dataset.item_id = item_id;
+		li.dataset.favorite = item.favorite;
+		if (item.image_url) {
+			li.appendChild($('img', {src: item.image_url}));
+		} else {
+			li.appendChild($('img', 
+				{
+					src:'https://assets-cdn.github.com/images/modules/logos_page/GitHub-Mark.png'
+				}));
+		}
+	
+		var section = $('div',{});
+		var title = $('a', {href: item.url, target: '_blank', className: 'item-name'});
+		title.innerHTML = item.name;
+		section.appendChild(title);
+		var category = $('p', {className: 'item-category'});
+		category.innerHTML = 'Category: ' + item.categories.join(', ');
+		section.appendChild(category);
+		var stars = $('div', {className: 'stars'});
+		for (var i = 0; i < item.rating; i++) {
+			var star = $('i', {className: 'fa fa-star'});
+			stars.appendChild(star);
+		}
+		if (('' + item.rating).match(/\.5$/)) {
+			starts.appendChild($('i', {
+				className: 'fa fa-star-half-o'
+			}));
+			
+		}
+		section.appendChild(stars);
+		li.appendChild(section);
+		var address = $('p', {className: 'item-address'});
+		var addressHTML = item.address + "<br/>" + item.city;
+		address.innerHTML = addressHTML;
+		li.append(address);
+		
+		var favLink = $('p', {classNmae: 'fav-link'});
+		favLink.onclick = function() {
+			changeFavoriteItem(item_id);
+		};
+		favLink.appendChild($('i', {id:'fav-icon-' + item_id, className: item.favorite ? 'fa fa-heart' : 'fa fa-heart-o'}));
+		li.appendChild(favLink);
+		itemList.appendChild(li);
+	}
+	
+	function initGeoLocation() {
+		if (navigator.geolocation) {
+			navigator.geolocation.getCurrentPosition(onPositionUpdate, onLoadPositionFailed, {
+				maximumAge: 60000
+			});
+			showLoadingMessage('Retrieving your location...');
+		} else {
+			onLoadPositionFailed();
+		}
+	}
+	
+	function onPositionUpdate(position) {
+		lat = position.coords.latitude;
+		lon = position.coords.longitude;
+		loadNearbyItems();
+	}
+	function onLoadPositionFailed() {
+		console.warn('navigator.geolocation is not available');
+		getLocationFromIP();
+	}
+	
+	function getLocationFromIP() {
+		var url = 'http://ipinfo.io/json';
+		var req = null;
+		ajax('GET', url, req, function(res) {
+			var result = JSON.parse(res);
+			if ('loc' in result) {
+				var loc= result.loc.split(',');
+				lat = loc[0];
+				lng = loc[1];
+			} else {
+				console.warn('Getting location by IP failed.');
+
+			}
+			loadNearbyItems();
+		});
+	}
+	
+	function ajax(method, url, data, callback, errorHandler) {
+		var xhr = new XMLHttpRequest();
+		xhr.open(method, url, true);
+		xhr.onload = function() {
+			switch(xhr.status) {
+				case 200: 
+					callback(xhr.responseText);
+					break;
+				case 401:
+					errorHandler();
+					break;
+			}
+		};
+		xhr.onerror = function() {
+			console.error("The request couldn't be completed.");
+			errorHandler();
+		}
+		if (data === null) {
+			xhr.send();
+		} else {
+			xhr.setRequestHeader("Content-Type", "application/json;charset=utf-8");
+			xhr.send(data);
+		}
+	}
+	
+	function loadNearbyItems() {
+		
+		activeBtn('nearby-btn');
+		var url = './search';
+		var params = 'user_id=' + user_id + '&lat=' + lat + '&lon=' + lng;
+		var req = JSON.stringify({});
+		showLoadingMessage("Loading nearby items...");
+		
+		ajax('GET', url + '?' + params, req, function(res) {
+			var items = JSON.parse(res);
+			if (!items || items.length === 0) {
+				showWarningMessage('No nearby item');
+			} else {
+				listItems(items);
+			}
+		}, function() {
+			showErrorMessage('Can\'t load nearby items.');
+		});
+	} 
+	
+	function loadFavoriteItems() {
+		activeBtn('fav-btn');
+		var url = './history';
+		var params = 'user_id=' + user_id;
+		var req = JSON.stringify({});
+		showLoadingMessage('Loading favorite items...');
+		ajax('GET', url + '?' + params, req, function(res) {
+			var items = JSON.parse(res);
+			if (!items || items.length === 0) {
+				showWarningMessage('No favorite item.');
+			} else {
+				listItems(items);
+			}
+		}, function() {
+			showErrorMessage('Can\'t load favorite items.');
+		});
+	}
+	
+	function loadRecommendedItems() {
+		activeBtn('recommend-btn');
+		var url ='./recommendation';
+		var params = 'user_id=' +user_id + '&lat=' + lat + '&lon=' + lng;
+		var req = JSON.stringify({});
+		showLoadingMessage('Loading recommended items...');
+		
+		ajax(
+				'GET',
+				url + '?' + params,
+				req,
+				function(res) {
+					var items = JSON.parse(res);
+					if (!items || items.length === 0) {
+						showWarningMessage('No recommended item. Make sure you have favorites.');
+					} else {
+						listItems(items);
+					}
+				}, function() {
+					showErrorMessage('Cannot load recommended items.');
+
+				}
+		);
+	}
+	
+	function changeFavoriteItem(item_id) {
+		var li = $('item-' + item_id);
+		var favIcon = $('fav-icon-' + item_id);
+		var favorite = li.dataset.favorite !== 'true';
+		var url = './history';
+		var req = JSON.stringify({
+			user_id: user_id,
+			favorite: [item_id]
+		});
+		var method = favorite ? 'POST' : 'DELETE';
+		ajax(method, url, req, function(res) {
+			var result = JSON.parse(res);
+			if (result.result === 'SUCCESS') {
+				li.dataset.favorite = favorite;
+				favIcon.className = favorite ? 'fa fa-heart' : 'fa fa-heart-o'; 
+			}
+		});
+	}
+	
+		
+
+	
+	function init() {
+		$('nearby-btn').addEventListener('click',loadNearbyItems);
+		$('fav-btn').addEventListener('click', loadFavoriteItems);
+		$('recommend-btn').addEventListener('click', loadRecommendedItems);
+		$('submit-login').addEventListener('click', userLogin);
+		initGeoLocation();
+		
+	}
+	
+	function userLogin() {
+		
+		var username = $()
+	}
+
+	init();
+
+	
+	
+})();
+
+
+
+
+
+
+
+

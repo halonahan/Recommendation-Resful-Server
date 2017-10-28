@@ -1,0 +1,389 @@
+package db.mysql;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import db.DBConnection;
+import entity.Item;
+import entity.Item.ItemBuilder;
+import external.ExternalAPI;
+import external.ExternalAPIFactory;
+
+public class MySQLConnection implements DBConnection{
+	private Connection conn;
+	public MySQLConnection() {
+		try {
+			Class.forName("com.mysql.jdbc.Driver").newInstance();
+			conn = DriverManager.getConnection(MySQLDBUtil.URL);
+			
+		} catch (InstantiationException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IllegalAccessException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (ClassNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	@Override
+	public void close() {
+		if (conn != null) {
+			try {
+				conn.close();
+			} catch (SQLException e) {
+				
+				System.out.println(e.getMessage());
+			}
+		}
+		
+	}
+
+	@Override
+	public void setFavoriteItems(String userId, List<String> itemIds) {
+		if (conn == null) {
+			return;
+		}
+		//check table items whether or not exist the item_id
+		String sql = "SELECT COUNT(item_id) FROM items WHERE item_id = ?";
+		
+		//INSERT RECORD INTO HISTORY TABLE
+		String query = "INSERT INTO history (user_id, item_id) VALUES (?, ?)";	
+		try {
+			
+			PreparedStatement checkStatement = conn.prepareStatement(sql);
+			for (String itemId: itemIds) {
+				checkStatement.setString(1, itemId);
+				ResultSet checkResultSet = checkStatement.executeQuery();
+				if (checkResultSet.next()) {
+					if (checkResultSet.getInt(1) <= 0) {
+						return;
+					}
+				}
+				
+			}
+			
+			PreparedStatement statement = conn.prepareStatement(query);
+			for (String itemId : itemIds) {
+				statement.setString(1, userId);
+				statement.setString(2, itemId);
+				statement.execute();
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
+
+	@Override
+	public void unsetFavoriteItems(String userId, List<String> itemIds) {
+		if (conn == null) {
+			return;
+		}
+	      String query = "DELETE FROM history WHERE user_id = ? AND item_id = ?";
+	      try {
+	    	  PreparedStatement statement = conn.prepareStatement(query);
+	    	  
+	    	  for (String itemId: itemIds) {
+	    		  statement.setString(1, userId);
+	    		  statement.setString(2, itemId);
+	    		  statement.execute();
+	    	  }
+	    	 
+
+	        } catch (SQLException e) {
+	          e.printStackTrace();
+	        }
+		
+	}
+
+	@Override
+	public Set<String> getFavoriteItemIds(String userId) {
+		if (conn == null) {
+			return null;
+		}
+		Set<String> favoriteItems = new HashSet<>();
+		String query = "SELECT item_id FROM history WHERE user_id = ?";
+		try {
+			PreparedStatement statement = conn.prepareStatement(query);
+			statement.setString(1, userId);
+			//resultset xiangdangyu array limian key value pair cun de 
+			ResultSet rs = statement.executeQuery();
+			while (rs.next()) {
+				favoriteItems.add(rs.getString("item_id"));
+			}
+	    	 
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		return favoriteItems;
+
+
+	}
+
+	@Override
+	public Set<Item> getFavoriteItems(String userId) {
+		
+		if (conn == null) {
+			return null;
+		}
+		Set<String> itemIds = getFavoriteItemIds(userId);
+		Set<Item> favoriteItems= new HashSet<>();
+		try {
+			for (String itemId: itemIds) {
+				
+				String sql = "SELECT * FROM items WHERE item_id = ?";
+				PreparedStatement statement = conn.prepareStatement(sql);
+				statement.setString(1, itemId); //1 represent which ?
+				ResultSet rs = statement.executeQuery();
+				ItemBuilder builder = new ItemBuilder();
+				if (rs.next()) {
+					builder.setItemId(rs.getString("item_id"));
+					builder.setName(rs.getString("name"));
+					builder.setCity(rs.getString("city"));
+					builder.setState(rs.getString("state"));
+					builder.setCountry(rs.getString("country"));
+					builder.setZipcode(rs.getString("zipcode"));
+					builder.setRating(rs.getDouble("rating"));
+					builder.setAddress(rs.getString("address"));
+					builder.setLatitude(rs.getDouble("latitude"));
+					builder.setLongitude(rs.getDouble("longitude"));
+					builder.setDescription(rs.getString("description"));
+					builder.setSnippet(rs.getString("snippet"));
+					builder.setSnippetUrl(rs.getString("snippet_url"));
+					builder.setImageUrl(rs.getString("image_url"));
+					builder.setUrl(rs.getString("url"));
+					
+				}
+
+				builder.setCategories(getCategories(itemId));
+				favoriteItems.add(builder.build());
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		return favoriteItems;
+	}
+
+	@Override
+	public Set<String> getCategories(String itemId) {
+		if (conn == null) {
+			return null;
+		}
+	
+		Set<String> categories = new HashSet<>();
+		try {
+			String sql = "SELECT category FROM categories WHERE item_id = ? ";
+			PreparedStatement statement = conn.prepareStatement(sql);
+			statement.setString(1, itemId);
+			ResultSet rs = statement.executeQuery();
+			while (rs.next()) {
+				categories.add(rs.getString("category"));
+			}
+		} catch (Exception e) {
+			System.out.println(e.getMessage());
+		}
+		return categories;
+
+	}
+
+	@Override
+	public List<Item> searchItems(String userId, double lat, double lon, String term) {
+			
+		// Connect to external API
+				ExternalAPI api = ExternalAPIFactory.getExternalAPI(); // moved here
+				List<Item> items = api.search(lat, lon, term);
+				for (Item item : items) {
+					// Save the item into our own db.
+					saveItem(item);
+				}
+				return items;
+
+	}
+
+	@Override
+	public void saveItem(Item item) {
+		if (conn == null) {
+			return;
+		}
+		try {
+			// First, insert into items table
+			//fangzhi sql injection attack
+			//wenhao baozhenglimianbuhuiyouluojiyunsuan, doushi putong String
+			String sql = "INSERT IGNORE INTO items (item_id,name,city,state,country,zipcode,rating,address,latitude,longitude,description,snippet,snippet_url,image_url,url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+			PreparedStatement statement = conn.prepareStatement(sql);
+			statement.setString(1, item.getItemId());
+			statement.setString(2, item.getName());
+			statement.setString(3, item.getCity());
+			statement.setString(4, item.getState());
+			statement.setString(5, item.getCountry());
+			statement.setString(6, item.getZipcode());
+			statement.setDouble(7, item.getRating());
+			statement.setString(8, item.getAddress());
+			statement.setDouble(9, item.getLatitude());
+			statement.setDouble(10, item.getLongitude());
+			statement.setString(11, item.getDescription());
+			statement.setString(12, item.getSnippet());
+			statement.setString(13, item.getSnippetUrl());
+			statement.setString(14, item.getImageUrl());
+			statement.setString(15, item.getUrl());
+			statement.execute();
+
+			// Second, update categories table for each category.
+			sql = "INSERT IGNORE INTO categories(item_id, category) VALUES(?,?)";
+			for (String category: item.getCategories()) {
+				statement = conn.prepareStatement(sql);
+				statement.setString(1, item.getItemId());
+				statement.setString(2, category);
+				statement.execute();
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+
+		
+	}
+
+	@Override
+	public String getFullname(String userId) {
+		
+		if (conn == null) {
+			return null;
+		}
+		String name = "";
+		try {
+			String sql = "SELECT first_name, last_name FROM users WHERE user_id = ?";
+			PreparedStatement statement = conn.prepareStatement(sql);
+			statement.setString(1, userId);
+			ResultSet rs = statement.executeQuery();
+			//user only one, so using if
+			if (rs.next()) {
+				fullName += String.join(" ", rs.getString("first_name"), rs.getString("last_name"));
+
+			}
+		
+		} catch (Exception e) {
+			System.out.println(e.getMessage());
+		}
+		return fullName;
+	}
+
+	@Override
+	public boolean verifyLogin(String userId, String password) {
+		if (conn == null) {
+			return false;
+		}
+		
+		try {
+			String sql = "SELECT user_id FROM users WHERE user_id = ? AND password = ?";
+			PreparedStatement statement = conn.prepareStatement(sql);
+			statement.setString(1, userId);
+			statement.setString(2, password);
+			ResultSet rs = statement.executeQuery();
+			
+			//user only one, so using if
+			if (rs.next()) {
+				return true;
+			}
+		
+		} catch (Exception e) {
+			System.out.println(e.getMessage());
+		}
+		return false;
+	}
+	
+	@Override
+	public boolean userRegister(String userId, String password, String firstName, String lastName) {
+		if (conn == null) {
+			return false;
+		}
+		boolean result = false;
+		String query = "SELECT user_id FROM users WHERE user_id = ?";
+		
+		
+		String sql = "INSERT INTO users (user_id, password, first_name, last_name) VALUES(?, ?, ?, ?)";
+		try {
+			
+			PreparedStatement statement1 = conn.prepareStatement(query);
+			statement1.setString(1, userId);
+			ResultSet resultSet = statement1.executeQuery();
+			if (resultSet.next()) {
+				return false;
+			}
+			PreparedStatement statement2 = conn.prepareStatement(sql);
+			statement2.setString(1, userId);
+			statement2.setString(2, password);
+			statement2.setString(3, firstName);
+			statement2.setString(4, lastName);
+			result = (statement2.executeUpdate() > 0);
+			System.out.println(result);
+			
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		
+		return result;
+		
+	}
+	@Override
+	public void autoCleanDatabase() {
+		//Method 1: check for time (worked)
+//		String query1 = "DELETE FROM history WHERE last_update_time < (NOW() - INTERVAL 20 DAY)";
+//		String query2 = "DELETE categories.* FROM categories inner join items on items.item_id = categories.item_id where categories.last_update_time < (NOW() - INTERVAL 20 DAY)";
+//		String query3 = "DELETE FROM items WHERE last_update_time < (NOW() - INTERVAL 20 DAY)";
+//		try {
+//			PreparedStatement statement1 = conn.prepareStatement(query1);
+//			PreparedStatement statement2 = conn.prepareStatement(query2);
+//			PreparedStatement statement3 = conn.prepareStatement(query3);
+//			statement1.execute();
+//			statement2.execute();
+//			statement3.execute();
+//		} catch (SQLException e) {
+//			// TODO Auto-generated catch block
+//			e.printStackTrace();
+//		}
+		
+	//Method 2: check total numbers of records
+		//String query = "SELECT COUNT(history_id) FROM history";
+		
+		//CHECK THE NUMBER RECORD IN DATABASE
+		String query1 = "SELECT COUNT(item_id) FROM categories";
+		
+		try {
+			PreparedStatement statement1 = conn.prepareStatement(query1);
+			ResultSet resultSet = statement1.executeQuery();
+			int total_records_num = 0;
+			if (resultSet.next()) {
+				total_records_num = resultSet.getInt(1);
+			}
+			
+			//CLEAN DATABASE
+			if (total_records_num > MySQLDBUtil.DB_UPBOUND_DATA_NUM) {
+				int remain_records_num = total_records_num - MySQLDBUtil.DB_UPBOUND_DATA_NUM;
+				String query2 = "DELETE FROM categories ORDER BY categories.last_update_time asc limit " + remain_records_num;
+				PreparedStatement statement2 = conn.prepareStatement(query2);
+				statement2.execute();
+				String query3 = "DELETE FROM history WHERE item_id NOT IN (select item_id from categories)";
+				PreparedStatement statement3 = conn.prepareStatement(query3);
+				statement3.execute();
+				String query4 = "DELETE FROM items WHERE item_id NOT IN (SELECT item_id FROM categories)";
+				PreparedStatement statement4 = conn.prepareStatement(query4);
+				statement4.execute();
+			}
+			
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		
+	}
+
+}
